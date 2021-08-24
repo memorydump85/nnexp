@@ -120,13 +120,13 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.mnist_test = MNIST(os.getcwd(), train=False, download=True, transform=transform)
 
     def train_dataloader(self):
-        return DataLoader(self.mnist_train, batch_size=128, num_workers=8, pin_memory=True)
+        return DataLoader(self.mnist_train, batch_size=128, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(self.mnist_val, batch_size=128, num_workers=8, pin_memory=True)
+        return DataLoader(self.mnist_val, batch_size=128, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def test_dataloader(self):
-        return DataLoader(self.mnist_test, batch_size=128, num_workers=8, pin_memory=True)
+        return DataLoader(self.mnist_test, batch_size=128, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def configure_optimizers(self):
         self._optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
@@ -136,9 +136,16 @@ class LightningMNISTClassifier(pl.LightningModule):
 
 
 def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--ckpt", help="Restore training from checkpoint", default=None)
+    args = parser.parse_args()
+
     model = LightningMNISTClassifier()
-    trainer = pl.Trainer(gpus=1 if torch.cuda.is_available() else None)
-    # trainer = pl.Trainer(tpu_cores=8)
+    if args.ckpt:
+        trainer = pl.Trainer(resume_from_checkpoint=args.ckpt)
+    else:
+        trainer = pl.Trainer(gpus=1 if torch.cuda.is_available() else None)
     trainer.fit(model)
 
 if __name__ == '__main__':
