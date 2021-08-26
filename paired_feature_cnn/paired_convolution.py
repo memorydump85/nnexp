@@ -10,7 +10,7 @@ class PairedConvolution(pl.LightningModule):
     def __init__(self, in_channels: int, out_channels: int, kernel_size: int, **kwargs):
         super(self.__class__, self).__init__()
         self._conv = torch.nn.Conv2d(in_channels, out_channels*2, kernel_size, **kwargs)
-        self._offsets = torch.nn.Parameter((torch.rand(out_channels, 2) - 0.5) * 2).to(self.device)
+        self._offsets = torch.nn.Parameter((torch.rand(out_channels, 2) - 0.5) * 1).to(self.device)
         self._grids: T.Dict[torch.Size, torch.Tensor] = dict()
 
     def forward(self, x):
@@ -29,7 +29,7 @@ class PairedConvolution(pl.LightningModule):
         # Output will have `C//2` channels as the convolutional output
         # `phi` with `C` channels. This is because adjacent conv
         # responses will be aggregated, pair-wise, into one response.
-        y = torch.zeros(B, C//2, H, W)
+        y = torch.zeros(B, C//2, H, W, device=self.device)
 
         # Iterate pair-by-pair (group), sample the second image
         # according to its corresponding offset and combine with the
@@ -40,7 +40,7 @@ class PairedConvolution(pl.LightningModule):
             p, q = g*2, g*2+1  # g-th pair
             offset_grid = grid + self._offsets[g]
             offset_sampled_q = torch.nn.functional.grid_sample(phi[:, q:q+1, :, :], offset_grid, align_corners=False)
-            y[:, g, :, :] = (phi[:, p:p+1, :, :] * offset_sampled_q).squeeze()
+            y[:, g, :, :] = (phi[:, p:p+1, :, :] + offset_sampled_q).squeeze()
 
         return y
 

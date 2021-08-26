@@ -29,14 +29,14 @@ class LightningMNISTClassifier(pl.LightningModule):
     def __init__(self):
         super(LightningMNISTClassifier, self).__init__()
         # mnist images are (1, 28, 28) (channels, width, height)
-        self.filters1 = PairedConvolution(in_channels=1, out_channels=8, kernel_size=5, stride=1, padding=2)
+        self.filters1 = PairedConvolution(in_channels=1, out_channels=32, kernel_size=5, stride=1, padding=2)
         self.conv1 = nn.Sequential(
             self.filters1,
             nn.SELU(),
             nn.MaxPool2d(kernel_size=7),
         )
         # fully connected layer, output 10 classes
-        self.out = nn.Linear(128, 10)
+        self.out = nn.Linear(512, 10)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -57,7 +57,8 @@ class LightningMNISTClassifier(pl.LightningModule):
 
     def training_epoch_end(self, _outputs) -> None:
         self.logger.experiment.add_image(f'filters', tensor_to_img(self.filters1._conv.weight), self.current_epoch)
-        self.log('learning_rate', self._scheduler.get_last_lr()[0])
+        self.log('learning_rate', self._scheduler.get_last_lr()[0], prog_bar=True)
+        print(self.filters1._offsets)
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
@@ -77,17 +78,18 @@ class LightningMNISTClassifier(pl.LightningModule):
         self.mnist_test = MNIST(os.getcwd(), train=False, download=True, transform=transform)
 
     def train_dataloader(self):
-        return DataLoader(self.mnist_train, batch_size=256, num_workers=os.cpu_count()-2, pin_memory=True)
+        return DataLoader(self.mnist_train, batch_size=1024, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def val_dataloader(self):
-        return DataLoader(self.mnist_val, batch_size=256, num_workers=os.cpu_count()-2, pin_memory=True)
+        return DataLoader(self.mnist_val, batch_size=1024, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def test_dataloader(self):
-        return DataLoader(self.mnist_test, batch_size=256, num_workers=os.cpu_count()-2, pin_memory=True)
+        return DataLoader(self.mnist_test, batch_size=1024, num_workers=os.cpu_count()-2, pin_memory=True)
 
     def configure_optimizers(self):
         self._optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self._scheduler = torch.optim.lr_scheduler.OneCycleLR(self._optimizer, max_lr=0.01, total_steps=100)
+        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, [30, 300], verbose=True)
+        # self._scheduler = torch.optim.lr_scheduler.OneCycleLR(self._optimizer, max_lr=0.01, total_steps=100)
         # return [self._optimizer], [self._scheduler]
         return self._optimizer
 
