@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#!/usr/bin/env python3.6
 
 import argparse
 from pathlib import Path
@@ -49,9 +49,8 @@ def main():
                 '--labels=goog-dm=deeplearning-1',
                 '--reservation-affinity=any'] + zone_project_args())
         except subprocess.CalledProcessError as e:
-            if b'already exists' in e.output:
-                pass
-            else: raise
+            print('Instance probably already exists. Will try starting existing instance ...')
+            pass
 
         subprocess.check_output(['gcloud', 'compute', 'instances', 'start', f'nnexp-vm--{gcp_resource_tagname}'] + zone_project_args())
         subprocess.check_output(['gcloud', 'compute', 'config-ssh'])

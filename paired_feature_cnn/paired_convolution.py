@@ -44,6 +44,31 @@ class PairedConvolution(pl.LightningModule):
 
         return y
 
+    def visualizations(self):
+        def normalize(t):
+            t = t.detach()
+            t -= t.min()
+            t /= t.std()
+            return t
+
+        canvas = torch.zeros(self._conv.out_channels // 2, 1, 29, 29, device=self.device, requires_grad=False)
+        B, _C, H, W = self._conv.weight.shape
+        for g in range(B // 2):
+            p, q = g*2, g*2+1  # g-th pair
+            offr, offc = (14 * self._offsets[g] + 13).to(int)
+            canvas[g, 0, offr:offr+H, offc:offc+W] = 1
+            canvas[g, 0, 13:13+H, 13:13+W] += normalize(self._conv.weight[p, 0, ...])
+            canvas[g, 0, offr:offr+H, offc:offc+W] += normalize(self._conv.weight[q, 0, ...])
+            canvas[g, 0] = normalize(canvas[g, 0])
+        return canvas
+
+
 x = torch.rand(5, 1, 28, 28)
-pc = PairedConvolution(1, 3, 5, padding=2)
+pc = PairedConvolution(1, 8, 5, padding=2)
 pc.forward(x)
+
+ims = pc.visualizations().detach().numpy()
+from matplotlib import pyplot as plt
+import numpy as np
+plt.imshow( ims[0][0], cmap='gray')
+plt.savefig('/tmp/plot.png')
