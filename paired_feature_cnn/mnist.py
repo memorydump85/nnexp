@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 import numpy as np
 from scipy import signal
@@ -9,7 +10,7 @@ from torch.utils.data import DataLoader, random_split
 from torch.nn import functional as F
 from torchvision.datasets import MNIST
 from torchvision import datasets, transforms
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 
 from paired_convolution import PairedConvolution
 
@@ -57,9 +58,11 @@ class LightningMNISTClassifier(pl.LightningModule):
         return {'loss': loss}
 
     def training_epoch_end(self, _outputs) -> None:
-        self.logger.experiment.add_image(f'filters', tensor_to_img(self.filters1._conv.weight), self.current_epoch)
+        filters_vis = tensor_to_img(self.filters1.visualizations())
+        self.logger.experiment.add_image(f'filters', filters_vis, self.current_epoch)
+        save_image(filters_vis,
+            Path(self.logger.save_dir) / self.logger.name / f'version_{self.logger.version}' / f'filters@{self.current_epoch:05d}.png')
         self.log('learning_rate', self._scheduler.get_last_lr()[0], prog_bar=True)
-        print(self.filters1._offsets)
 
     def validation_step(self, val_batch, batch_idx):
         x, y = val_batch
@@ -108,8 +111,8 @@ def main():
 
     model = LightningMNISTClassifier()
     trainer = pl.Trainer(resume_from_checkpoint=args.ckpt,
-                            gpus=-1 if torch.cuda.is_available() else None,
-                            accelerator='ddp')
+                         gpus=-1 if torch.cuda.is_available() else None,
+                         accelerator='ddp' if torch.cuda.is_available() else None)
     trainer.fit(model)
 
 if __name__ == '__main__':
