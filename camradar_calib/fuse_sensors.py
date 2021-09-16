@@ -20,7 +20,7 @@ def process_sample(nusc, scene, sample, outdir):
 
         pixels, depth, im = nusc.explorer.map_pointcloud_to_image(sample['data'][radar_channel],
                                                                     sample['data'][cam_channel])
-        sample_outdir = args.outdir / scene['token'] / sample['token'] / cam_channel / radar_channel
+        sample_outdir = outdir / scene['token'] / sample['token'] / cam_channel / radar_channel
         sample_outdir.mkdir(parents=True, exist_ok=True)
 
         im_symlinkpath = (sample_outdir / "im").with_suffix(src_im_filepath.suffix)
