@@ -18,7 +18,7 @@ def main():
                         help='Output folder')
     args = parser.parse_args()
 
-    RadarPointCloud.disable_filters()
+    # RadarPointCloud.disable_filters()
     nusc = nu.NuScenes(dataroot=args.data_root, version=args.data_version, verbose=True)
 
     def iter_samples(scene : dict):
@@ -43,7 +43,7 @@ def main():
 
                 pixels, depth, im = nusc.explorer.map_pointcloud_to_image(sample['data'][radar_channel],
                                                                           sample['data'][cam_channel])
-                sample_outdir = args.outdir / scene['token'] / sample['token']
+                sample_outdir = args.outdir / scene['token'] / sample['token'] / cam_channel / radar_channel
                 sample_outdir.mkdir(parents=True, exist_ok=True)
 
                 im_symlinkpath = (sample_outdir / "im").with_suffix(src_im_filepath.suffix)
