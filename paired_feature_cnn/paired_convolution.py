@@ -40,7 +40,7 @@ class PairedConvolution(pl.LightningModule):
             p, q = g*2, g*2+1  # g-th pair
             offset_grid = grid + self._offsets[g]
             offset_sampled_q = torch.nn.functional.grid_sample(phi[:, q:q+1, :, :], offset_grid, align_corners=False)
-            y[:, g, :, :] = (phi[:, p:p+1, :, :] + offset_sampled_q).squeeze()
+            y[:, g, :, :] = (phi[:, p:p+1, :, :] * offset_sampled_q).squeeze()
 
         return y
 

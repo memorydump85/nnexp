@@ -68,3 +68,8 @@ def main():
 
 if __name__ == '__main__':
     main()
+
+# Notes:
+# pip install pytorch_lightning boto3
+# sudo-apt get install aws-cli
+# sudo apt-get install aws-cli
