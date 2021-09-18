@@ -60,8 +60,7 @@ def main():
                 yield sample
             sample = nusc.get('sample', sample['next'])
 
-    outdir = args.outdir
-    invocation_args = ((nusc, scene, sample, outdir)
+    invocation_args = ((nusc, scene, sample, args.outdir)
                             for scene in nusc.scene for sample in iter_samples(scene))
     with multiprocessing.Pool() as p:
         p.starmap(process_sample, invocation_args)
