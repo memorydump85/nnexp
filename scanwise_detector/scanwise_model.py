@@ -1,5 +1,6 @@
 from pathlib import Path
 import typing as T
+import platform
 
 import numpy as np
 import pytorch_lightning as pl
@@ -36,11 +37,19 @@ class ScanwiseDetectorDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self._path_prefixes)
 
+mini = (platform.node() == 'p50')
+
+class DataModuleConfig:
+    batch_size: int =  8 if mini else 32
+
 
 class ScanwiseDetectorDataModule(pl.LightningDataModule):
+
+    class Config:
+        batch_size: int = 8
+
     def __init__(self, data_root_dir: Path, batch_size: int=8):
         super().__init__()
-        self._batch_size = batch_size
         self._train = ScanwiseDetectorDataset(list(data_root_dir.glob('*/*.npy'))[:8])
         self._val = ScanwiseDetectorDataset(list(data_root_dir.glob('*/*.npy'))[:8])
         self._test = ScanwiseDetectorDataset(list(data_root_dir.glob('*/*.npy'))[:8])
@@ -52,31 +61,94 @@ class ScanwiseDetectorDataModule(pl.LightningDataModule):
         pass
 
     def train_dataloader(self):
-        return torch.utils.data.DataLoader(self._train, batch_size=self._batch_size, shuffle=True, pin_memory=True)
+        return torch.utils.data.DataLoader(
+            self._train, batch_size=DataModuleConfig.batch_size, shuffle=True, pin_memory=True)
 
     def val_dataloader(self):
-        return torch.utils.data.DataLoader(self._val, batch_size=self._batch_size, pin_memory=True)
+        return torch.utils.data.DataLoader(
+            self._val, batch_size=DataModuleConfig.batch_size, pin_memory=True)
 
     def test_dataloader(self):
-        return torch.utils.data.DataLoader(self._test, batch_size=self._batch_size, pin_memory=True)
+        return torch.utils.data.DataLoader(
+            self._test, batch_size=DataModuleConfig.batch_size, pin_memory=True)
 
 
 class ScanwiseDetectorModel(pl.LightningModule):
     def __init__(self) -> None:
         super().__init__()
+        """
         self._model = torch.nn.Sequential(
             torch.nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, padding=1),
             torch.nn.LeakyReLU(),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
             torch.nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, padding=1),
             torch.nn.LeakyReLU(),
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
             torch.nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1),
             torch.nn.LeakyReLU(),
-            torch.nn.Conv2d(in_channels=64, out_channels=1, kernel_size=1, padding=0))
+            torch.nn.MaxPool2d(kernel_size=2, stride=2),
+
+            torch.nn.ConvTranspose2d(in_channels=64, out_channels=64, kernel_size=2, stride=2),
+            torch.nn.LeakyReLU(),
+
+            torch.nn.ConvTranspose2d(in_channels=64, out_channels=64, kernel_size=2, stride=2),
+            torch.nn.LeakyReLU(),
+
+            torch.nn.ConvTranspose2d(in_channels=64, out_channels=1, kernel_size=2, stride=2),
+            torch.nn.ConstantPad2d((0, 2), 0))
+        """
+        """
+        NUM_FILTERS=20
+        self._scaled_convolutions = { f'conv{w}':
+            torch.nn.Sequential(
+                torch.nn.Conv1d(in_channels=3, out_channels=NUM_FILTERS, kernel_size=w + 1, padding=w // 2),
+                torch.nn.LeakyReLU())
+                    for w in (4, 8, 16, 32, 64) }  # TODO: wraparound scan for objects at border
+        for name, layer in self._scaled_convolutions.items():
+            self.add_module(name, layer)
+
+        self._linear_bottleneck = torch.nn.Sequential(
+            torch.nn.Conv1d(in_channels=NUM_FILTERS*5, out_channels=1, kernel_size=1, padding=0),
+        )
+        """
+        NUM_FILTERS=4
+        self._scaled_convolutions = { f'conv{w}':
+            torch.nn.Sequential(
+                torch.nn.Conv1d(in_channels=3, out_channels=NUM_FILTERS, kernel_size=9, padding=w*4, dilation=w),
+                torch.nn.LeakyReLU())
+                    for w in (2, 4, 8, 16, 32, 64) }  # TODO: wraparound scan for objects at border
+        for name, layer in self._scaled_convolutions.items():
+            self.add_module(name, layer)
+        self._linear_bottleneck = torch.nn.Sequential(
+            torch.nn.Conv1d(in_channels=NUM_FILTERS*6, out_channels=1, kernel_size=1, padding=0),
+        )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self._model(x)
+        u = torch.cat([conv(x) for conv in self._scaled_convolutions.values()], dim=1)
+        return self._linear_bottleneck(u)
+
+    @staticmethod
+    def batch_images_to_scans(batch: torch.Tensor) -> torch.Tensor:
+        """Separate out the rows of each image (2D) in a `batch` to its
+        own separate signal (1D).
+        """
+        B, C, H, W = batch.shape
+        return batch.transpose(1, 2).reshape(B*H, C, W)  # BCHW -> (B*H)*C*W
+
+    @staticmethod
+    def batch_scans_to_images(batch: torch.Tensor, im_height: int) -> torch.Tensor:
+        """Combine separate scans (1D) into an image (2D). This is the inverse
+        of `batch_images_to_scans`.
+        """
+        BH, C, W = batch.shape
+        return batch.reshape(-1, im_height, C, W).transpose(2, 1)  # (B*H)*C*W -> BCHW
 
     def training_step(self, batch, batch_idx):
+        _B, _C, H, _W = batch.shape
+        batch = __class__.batch_images_to_scans(batch)
+        print(batch.is_contiguous())
         x, y = batch[:, :3, :], batch[:, 3:, :]
         y_hat = self(x)
         loss = F.binary_cross_entropy_with_logits(y_hat, y)
@@ -87,10 +159,14 @@ class ScanwiseDetectorModel(pl.LightningModule):
         self.log('learning_rate', self._scheduler.get_last_lr()[0], prog_bar=True)
 
     def validation_step(self, batch, batch_idx):
+        _B, _C, H, _W = batch.shape
+        batch = __class__.batch_images_to_scans(batch)
         x, y = batch[:, :3, :], batch[:, 3:, :]
         y_hat = self(x)
         loss = F.binary_cross_entropy_with_logits(y_hat, y)
-        return {'val_loss': loss, 'y_hat': F.sigmoid(y_hat), 'y': y}
+        y_hat = __class__.batch_scans_to_images(y_hat, H)
+        y = __class__.batch_scans_to_images(y, H)
+        return {'val_loss': loss, 'y_hat': torch.sigmoid(y_hat), 'y': y}
 
     def validation_epoch_end(self, outputs):
         y_hat = tensor_to_img(outputs[0]['y_hat'])
@@ -103,7 +179,7 @@ class ScanwiseDetectorModel(pl.LightningModule):
 
     def configure_optimizers(self):
         self._optimizer = torch.optim.Adam(self.parameters(), lr=1e-2)
-        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, [300, 3000], verbose=True)
+        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optimizer, [500, 3000], verbose=True)
         # self._scheduler = torch.optim.lr_scheduler.OneCycleLR(self._optimizer, max_lr=0.01, total_steps=100)
         return [self._optimizer], [self._scheduler]
 
@@ -112,8 +188,11 @@ def main():
     model = ScanwiseDetectorModel()
     data_module = ScanwiseDetectorDataModule(Path('/tmp/waymo_od_lidar'))
 
+    model.training_step(next(iter(data_module.train_dataloader())), 0)
+
     trainer = pl.Trainer(gpus=-1 if torch.cuda.is_available() else None,
-                         accelerator='ddp' if torch.cuda.is_available() else None)
+                         accelerator='ddp' if torch.cuda.is_available() else None,
+                         profiler='advanced')
     trainer.fit(model, data_module)
 
 
