@@ -1,3 +1,4 @@
+import enum
 from pathlib import Path
 import typing as T
 import platform
@@ -18,17 +19,37 @@ def tensor_to_img(tensor, ch=0, allkernels=True, nrow=1, padding=1):
 
 
 class ScanwiseDetectorDataset(torch.utils.data.Dataset):
+    class Channel(enum.IntEnum):
+        RANGE = 0
+        INTENSITY = 1
+        ELONGATION = 2
+        _NUM_INPUT_CHANNELS = 3
+        NO_LABEL_ZONE = 3
+        BOX_INDEX = 4
+        BOX_CENTER_X = 5
+        BOX_CENTER_Y = 6
+        BOX_CENTER_Z = 7
+        BOX_LENGTH = 8
+        BOX_WIDTH = 9
+        BOX_HEIGHT = 10
+        BOX_HEADING = 11
+
     def __init__(self, path_prefixes: T.Iterable[Path]) -> None:
         super().__init__()
         self._path_prefixes = list(path_prefixes)
 
     def __getitem__(self, i: int) -> torch.Tensor:
-        relevant_dims = (0, 1, 2, 4)  # range, intensity, elongation, (no-label-zone), box-index
-        d = torch.from_numpy(np.load(self._path_prefixes[i].with_suffix('.npy'))[relevant_dims, ...])
-        d[0, ...] = (d[0, ...].clamp(0, np.inf) - 37.5) / 37.5     # normalize to [0, 1]
-        d[1, ...] = (d[1, ...].clamp(0, np.inf) - 25000) / 25000   # normalize to [0, 1]
-        d[2, ...] = (d[2, ...].clamp(0, np.inf) - 0.75) / 0.75     # normalize to [0, 1]
-        d[3, ...] = d[3, ...].clamp(-1, 0) + 1    # Convert box index to box yes/no
+        ch = self.Channel
+
+        d = np.load(self._path_prefixes[i].with_suffix('.npy'))
+        d[ch.RANGE, ...] = (d[ch.RANGE, ...].clip(0, np.inf) - 37.5) / 37.5     # normalize to [0, 1]
+        d[ch.INTENSITY, ...] = (d[ch.INTENSITY, ...].clip(0, np.inf) - 25000) / 25000   # normalize to [0, 1]
+        d[ch.ELONGATION, ...] = (d[ch.ELONGATION, ...].clip(0, np.inf) - 0.75) / 0.75     # normalize to [0, 1]
+        d[ch.BOX_INDEX, ...] = d[ch.BOX_INDEX, ...].clip(-1, 0) + 1    # Convert box index to box yes/no
+
+        relevant_channels = [ch.RANGE, ch.INTENSITY, ch.ELONGATION, ch.BOX_INDEX]
+        d = torch.from_numpy(d[relevant_channels, ...])
+        print(d.shape)
         # print(d[0, ...].max(), d[1, ...].max(), d[2, ...].max(), d[3, ...].max())
         # print(d[0, ...].min(), d[1, ...].min(), d[2, ...].min(), d[3, ...].min())
         # print()
