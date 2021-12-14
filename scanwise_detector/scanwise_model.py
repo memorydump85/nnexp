@@ -158,7 +158,7 @@ def main():
     logger = pl.loggers.TensorBoardLogger(save_dir=log_dir,
                                           name=model_name,
                                           version=sha[:7] + '.' + get_next_minor_version(log_dir, sha[:7]))
-    logger.experiment.add_text('diff', f'# {commit_info}\n\n<pre>\n{diff}\n</pre>\n')
+    logger.experiment.add_text('diff', f'### {commit_info}\n\n<pre>\n{diff}\n</pre>\n')
     trainer = pl.Trainer(gpus=-1 if torch.cuda.is_available() else None,
                          accelerator='ddp' if torch.cuda.is_available() else None,
                          logger=logger)  #, profiler='advanced')
