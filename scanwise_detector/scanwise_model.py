@@ -1,5 +1,7 @@
+import datetime
 import enum
 from pathlib import Path
+import subprocess
 import typing as T
 
 import numpy as np
@@ -119,18 +121,47 @@ class ScanwiseDetectorModel(pl.LightningModule):
         return [self._optimizer], [self._scheduler]
 
 
-def main():
-    np.random.seed(313424)
-    torch.manual_seed(313424)
+def get_git_info():
 
+    def check_output(cmd):
+        return subprocess.check_output(cmd).decode('utf-8').strip()
+
+    cmd = ['git', '-C', str(Path(__file__).parent)]
+    sha = check_output(cmd + ['rev-parse', 'HEAD'])
+    commit_info = check_output(cmd + ['log', '-1', '--oneline'])
+    diff = check_output(cmd + ['diff', '--stat']) + "\n\n" + check_output(cmd + ['--no-pager', 'diff'])
+
+    return sha, commit_info, diff
+
+
+def get_next_minor_version(dir_: Path, prefix: str) -> str:
+    existing = list(dir_.glob(f'**/{prefix}.*'))
+    print(dir_, prefix, existing)
+    if not existing:
+        max_version = -1
+    else:
+        max_version = max(int(x.name.split('.')[1]) for x in existing)
+    return f'{max_version + 1:05d}'
+
+
+def main():
+    if ModelConfig.use_manual_seed:
+        np.random.seed(313424)
+        torch.manual_seed(313424)
+
+    sha, commit_info, diff = get_git_info()
     model = ScanwiseDetectorModel()
     data_module = ScanwiseDetectorDataModule(Path('/tmp/waymo_od_lidar'))
 
-    model.training_step(next(iter(data_module.train_dataloader())), 0)
-
+    log_dir = Path(__file__).parent / f'_lightning_logs'
+    model_name = model.__class__.__name__
+    logger = pl.loggers.TensorBoardLogger(save_dir=log_dir,
+                                          name=model_name,
+                                          version=sha[:7] + '.' + get_next_minor_version(log_dir, sha[:7]))
+    logger.experiment.add_text('diff', f'# {commit_info}\n\n<pre>\n{diff}\n</pre>\n')
     trainer = pl.Trainer(gpus=-1 if torch.cuda.is_available() else None,
                          accelerator='ddp' if torch.cuda.is_available() else None,
-                         )#profiler='advanced')
+                         logger=logger)  #, profiler='advanced')
     trainer.fit(model, data_module)
 
 

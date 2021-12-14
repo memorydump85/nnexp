@@ -10,6 +10,7 @@ class DataModuleConfig:
 
 
 class ModelConfig:
+    use_manual_seed: bool = False
     use_centered_convolutions = False
 
 
