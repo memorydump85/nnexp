@@ -25,22 +25,28 @@ class ScanwiseDetectorDataset(torch.utils.data.Dataset):
         RANGE = 0
         INTENSITY = 1
         ELONGATION = 2
-        _NUM_INPUT_CHANNELS = 3  # Following channels contain ground-truth.
-        NO_LABEL_ZONE = 3
-        BOX_INDEX = 4
-        BOX_CENTER_X = 5
-        BOX_CENTER_Y = 6
-        BOX_CENTER_Z = 7
-        BOX_LENGTH = 8
-        BOX_WIDTH = 9
-        BOX_HEIGHT = 10
-        BOX_HEADING = 11
+        X = 3
+        Y = 4
+        Z = 5
+        _NUM_INPUT_CHANNELS = 6  # Following channels contain ground-truth.
+        NO_LABEL_ZONE = 6
+        BOX_INDEX = 7
+        BOX_CENTER_X = 8
+        BOX_CENTER_Y = 9
+        BOX_CENTER_Z = 10
+        BOX_LENGTH = 11
+        BOX_WIDTH = 12
+        BOX_HEIGHT = 13
+        BOX_HEADING = 14
 
     class SignalChannel(enum.IntEnum):
         """Numerical indices for the input signal channels of the dataset."""
         RANGE = 0
         INTENSITY = 1
         ELONGATION = 2
+        X = 3
+        Y = 4
+        Z = 5
 
     class GroundTruthChannel(enum.IntEnum):
         """Numerical indices for the ground-truth channels of the dataset."""
@@ -65,6 +71,18 @@ class ScanwiseDetectorDataset(torch.utils.data.Dataset):
         d[CH.INTENSITY, ...] = (d[CH.INTENSITY, ...].clip(0, np.inf) - 25000) / 25000  # normalize to [0, 1]
         d[CH.ELONGATION, ...] = (d[CH.ELONGATION, ...].clip(0, np.inf) - 0.75) / 0.75  # normalize to [0, 1]
         d[CH.BOX_INDEX, ...] = d[CH.BOX_INDEX, ...].clip(-1, 0) + 1  # Convert box index to box yes/no
+        if False:
+            print('Range:\t', d[CH.RANGE, ...].min(), d[CH.RANGE, ...].max())
+            print('Inten:\t', d[CH.INTENSITY, ...].min(), d[CH.INTENSITY, ...].max())
+            print('Elong:\t', d[CH.ELONGATION, ...].min(), d[CH.ELONGATION, ...].max())
+            valid = d[CH.RANGE, ...] >= 0
+            print('    x:\t', d[CH.X, valid].min(), d[CH.X, valid].max())
+            print('    y:\t', d[CH.Y, valid].min(), d[CH.Y, valid].max())
+            print('    z:\t', d[CH.Z, valid].min(), d[CH.Z, valid].max())
+            print('box.x:\t', d[CH.BOX_CENTER_X, ...].min(), d[CH.BOX_CENTER_X, ...].max())
+            print('box.y:\t', d[CH.BOX_CENTER_Y, ...].min(), d[CH.BOX_CENTER_Y, ...].max())
+            print('box.z:\t', d[CH.BOX_CENTER_Z, ...].min(), d[CH.BOX_CENTER_Z, ...].max())
+            print('box.h:\t', d[CH.BOX_HEADING, ...].min(), d[CH.BOX_HEADING, ...].max())
         return (torch.from_numpy(d[:CH._NUM_INPUT_CHANNELS, ...]).contiguous(),
                 torch.from_numpy(d[CH._NUM_INPUT_CHANNELS:, ...]).contiguous())
 
