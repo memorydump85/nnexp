@@ -88,7 +88,7 @@ class ScanwiseDetectorModel(pl.LightningModule):
         x, y = batch
         B, H, C, W = x.shape
         y_hat = self(x.view(B*H, C, W)).view(B, H, 1, W)
-        t = get_channel_BHCW(y, GTChannel.BOX_INDEX)
+        t = get_channel_BHCW(y, GTChannel.IS_IN_BOX)
         loss = F.binary_cross_entropy_with_logits(y_hat, t)
         return self._LossComputationResult(loss, y_hat, t)
 
